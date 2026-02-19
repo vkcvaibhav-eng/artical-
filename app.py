@@ -2,18 +2,14 @@ import streamlit as st
 import google.generativeai as genai
 import PyPDF2
 import docx
-import pandas as pd
-import json
 from io import BytesIO
 
 # --- Configuration & Setup ---
 st.set_page_config(page_title="Sandesh News Article Generator", layout="wide")
 
-# Initialize session state variables to store the drafts and table data
+# Initialize session state variables to store the drafts
 if "current_article" not in st.session_state:
     st.session_state.current_article = ""
-if "pesticide_data" not in st.session_state:
-    st.session_state.pesticide_data = pd.DataFrame()
 
 # --- Helper Functions ---
 def extract_text_from_pdf(uploaded_file):
@@ -42,111 +38,24 @@ api_key = st.sidebar.text_input("Gemini API Key", type="password")
 
 # --- Main UI ---
 st.title("📰 Sandesh News: Agri-Entomology Article Generator")
-st.markdown("Extract label claims, automatically match suitable chemicals, and generate a continuous paragraph article.")
+st.markdown("Upload a document or paste text, generate a draft, refine it, and export to Word.")
 
-# --- Step 1: Label Claim Extraction Section ---
-st.header("1. Upload Label Claim PDFs & Calculate Dose")
-st.markdown("Upload up to 5 PDFs containing pesticide label claims to extract crops, pests, and calculate the 10-Liter pump dose.")
-
-label_pdfs = st.file_uploader("Upload Label Claim PDFs (Max 5)", type=["pdf"], accept_multiple_files=True)
-
-if label_pdfs:
-    if len(label_pdfs) > 5:
-        st.error("Please upload a maximum of 5 files.")
-    else:
-        if st.button("Extract Recommendations"):
-            if not api_key:
-                st.error("Please enter your Gemini API Key in the sidebar.")
-            else:
-                with st.spinner("Analyzing label claims and calculating doses..."):
-                    genai.configure(api_key=api_key)
-                    # Using Flash for fast data extraction.
-                    model = genai.GenerativeModel('gemini-3-flash-preview', 
-                                                  generation_config=genai.GenerationConfig(response_mime_type="application/json"))
-                    
-                    combined_label_text = ""
-                    for pdf in label_pdfs:
-                        combined_label_text += extract_text_from_pdf(pdf) + "\n"
-                    
-                    extraction_prompt = f"""
-                    You are an agricultural data extractor. Read the provided pesticide label claim text.
-                    Extract the pesticide recommendations into a JSON array of objects.
-                    
-                    Each object MUST have exactly these keys:
-                    "chemical_name": (string, name of the pesticide/formulation)
-                    "crop": (string, target crop)
-                    "pest": (string, target insect or mite)
-                    "dose_formulation": (number, the formulation amount in g/ml. If a range is given like 500-600, use the average, e.g., 550)
-                    "water_liters": (number, the water requirement in liters. If a range is given like 500-1000, use the average, e.g., 750)
-                    
-                    Text: {combined_label_text[:40000]}
-                    """
-                    
-                    try:
-                        response = model.generate_content(extraction_prompt)
-                        extracted_json = json.loads(response.text)
-                        
-                        # Process calculations
-                        processed_data = []
-                        for item in extracted_json:
-                            try:
-                                dose = float(item['dose_formulation'])
-                                water = float(item['water_liters'])
-                                # Calculation: (Dose / Water Requirement) * 10
-                                pump_dose = round((dose / water) * 10, 2)
-                                
-                                processed_data.append({
-                                    "Select": False,
-                                    "Chemical": item['chemical_name'],
-                                    "Crop": item['crop'],
-                                    "Pest": item['pest'],
-                                    "Formulation (g/ml)": dose,
-                                    "Water (L)": water,
-                                    "10L Pump Dose (g/ml)": pump_dose
-                                })
-                            except (ValueError, TypeError, ZeroDivisionError):
-                                continue # Skip invalid rows
-                                
-                        st.session_state.pesticide_data = pd.DataFrame(processed_data)
-                        st.success("Extraction and calculation complete!")
-                    except Exception as e:
-                        st.error(f"Failed to parse data. Ensure the PDF contains readable label claims. Error: {e}")
-
-# Display data editor if data exists
-selected_chemicals_text = ""
-if not st.session_state.pesticide_data.empty:
-    st.markdown("### 🧪 Extracted Chemical Database")
-    st.markdown("The AI will automatically try to match these chemicals to your article. You can also manually check boxes below to force specific chemicals to be included.")
-    
-    edited_df = st.data_editor(
-        st.session_state.pesticide_data,
-        column_config={"Select": st.column_config.CheckboxColumn("Force Include", required=True)},
-        disabled=["Chemical", "Crop", "Pest", "Formulation (g/ml)", "Water (L)", "10L Pump Dose (g/ml)"],
-        hide_index=True
-    )
-    
-    selected_rows = edited_df[edited_df["Select"] == True]
-    if not selected_rows.empty:
-        selected_chemicals_text = "FORCE INCLUDE THESE CHEMICALS:\n"
-        for _, row in selected_rows.iterrows():
-            selected_chemicals_text += f"- Chemical: {row['Chemical']}, Dose per 10-Liter Pump: {row['10L Pump Dose (g/ml)']} g/ml\n"
-
-# --- Step 2: Main Article Source ---
-st.header("2. Provide Main Source Content")
-input_method = st.radio("Choose input method for the main article content:", ["Copy & Paste Text", "Upload PDF"])
+# --- Step 1: Input Section ---
+st.header("1. Provide Source Content")
+input_method = st.radio("Choose input method:", ["Copy & Paste Text", "Upload PDF"])
 
 source_text = ""
 
 if input_method == "Copy & Paste Text":
-    source_text = st.text_area("Paste your main English or Gujarati text here:", height=200)
+    source_text = st.text_area("Paste your English or Gujarati text here:", height=200)
 elif input_method == "Upload PDF":
-    uploaded_source = st.file_uploader("Upload an English or Gujarati PDF for the article body", type=["pdf"], key="source_pdf")
-    if uploaded_source is not None:
-        source_text = extract_text_from_pdf(uploaded_source)
-        st.success("Main PDF text extracted successfully!")
+    uploaded_file = st.file_uploader("Upload an English or Gujarati PDF", type=["pdf"])
+    if uploaded_file is not None:
+        source_text = extract_text_from_pdf(uploaded_file)
+        st.success("PDF text extracted successfully!")
 
-# --- Step 3: Generation Section ---
-st.header("3. Generate Initial Draft")
+# --- Step 2: Generation Section ---
+st.header("2. Generate Initial Draft")
 if st.button("Generate Sandesh Article"):
     if not api_key:
         st.error("Please enter your Gemini API Key in the sidebar.")
@@ -155,14 +64,8 @@ if st.button("Generate Sandesh Article"):
     else:
         with st.spinner("Drafting article for Sandesh News..."):
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-3-pro-preview') 
-            
-            # Prepare the database context for the prompt
-            pesticide_db_context = ""
-            if not st.session_state.pesticide_data.empty:
-                # Convert the relevant columns to CSV format for the LLM to read easily
-                df_subset = st.session_state.pesticide_data[['Chemical', 'Crop', 'Pest', '10L Pump Dose (g/ml)']]
-                pesticide_db_context = "AVAILABLE PESTICIDE DATABASE:\n" + df_subset.to_csv(index=False)
+            # Using the standard API model name for Gemini 1.5 Pro
+            model = genai.GenerativeModel('gemini-1.5-pro') 
             
             prompt = f"""
             You are an expert agricultural journalist writing for 'Sandesh News' in Gujarat.
@@ -174,10 +77,6 @@ if st.button("Generate Sandesh Article"):
             3. Use accurate agricultural and entomological terminology.
             4. Format with a catchy headline and continuous, flowing paragraphs. DO NOT use any bullet points, numbered lists, or dashes for lists. Write it as a narrative essay or traditional news article.
             5. The output must be entirely in Gujarati.
-            6. CRITICAL CROSS-REFERENCING TASK: Identify the main crop and pests discussed in the 'Source Text'. Then, look at the 'AVAILABLE PESTICIDE DATABASE' provided below. If you find chemicals in the database that match the crop and pest combination from the source text, extract them. Seamlessly weave these suitable chemicals and their explicitly calculated '10L Pump Dose' into the chemical management paragraph of your article.
-            7. {selected_chemicals_text}
-            
-            {pesticide_db_context}
             
             Source Text:
             {source_text[:20000]}
@@ -186,13 +85,13 @@ if st.button("Generate Sandesh Article"):
             response = model.generate_content(prompt)
             st.session_state.current_article = response.text
 
-# Display the current draft
+# Display the current draft if it exists
 if st.session_state.current_article:
     st.markdown("### 📝 Current Draft")
     st.info(st.session_state.current_article)
 
-    # --- Step 4: Refinement Section ---
-    st.header("4. Suggest Changes & Rewrite")
+    # --- Step 3: Refinement Section ---
+    st.header("3. Suggest Changes & Rewrite")
     suggestion = st.text_area("What should be changed, added, or removed?", placeholder="e.g., Make the chemical control section shorter, or emphasize organic methods more.")
     
     if st.button("Rewrite Article"):
@@ -203,7 +102,7 @@ if st.session_state.current_article:
         else:
             with st.spinner("Rewriting based on your suggestions..."):
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-3-pro-preview')
+                model = genai.GenerativeModel('gemini-1.5-pro')
                 
                 rewrite_prompt = f"""
                 You are an expert agricultural journalist. I have a draft article in Gujarati, but it needs some revisions.
@@ -223,10 +122,10 @@ if st.session_state.current_article:
                 
                 response = model.generate_content(rewrite_prompt)
                 st.session_state.current_article = response.text
-                st.rerun() 
+                st.rerun() # Refresh the app to show the updated draft
 
-    # --- Step 5: Export Section ---
-    st.header("5. Export Options")
+    # --- Step 4: Export Section ---
+    st.header("4. Export Options")
     word_file = create_word_docx(st.session_state.current_article)
     
     st.download_button(
