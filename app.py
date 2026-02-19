@@ -61,7 +61,7 @@ if label_pdfs:
                 with st.spinner("Analyzing label claims and calculating doses..."):
                     genai.configure(api_key=api_key)
                     # Using Flash for fast data extraction.
-                    model = genai.GenerativeModel('gemini-1.5-flash', 
+                    model = genai.GenerativeModel('gemini-3-flash-preview', 
                                                   generation_config=genai.GenerationConfig(response_mime_type="application/json"))
                     
                     combined_label_text = ""
@@ -155,7 +155,7 @@ if st.button("Generate Sandesh Article"):
     else:
         with st.spinner("Drafting article for Sandesh News..."):
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-1.5-pro') 
+            model = genai.GenerativeModel('gemini-3-pro-preview') 
             
             # Prepare the database context for the prompt
             pesticide_db_context = ""
@@ -203,7 +203,7 @@ if st.session_state.current_article:
         else:
             with st.spinner("Rewriting based on your suggestions..."):
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-1.5-pro')
+                model = genai.GenerativeModel('gemini-3-pro-preview')
                 
                 rewrite_prompt = f"""
                 You are an expert agricultural journalist. I have a draft article in Gujarati, but it needs some revisions.
