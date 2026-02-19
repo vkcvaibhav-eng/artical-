@@ -65,7 +65,7 @@ if st.button("Generate Sandesh Article"):
         with st.spinner("Drafting article for Sandesh News..."):
             genai.configure(api_key=api_key)
             # Using the standard API model name for Gemini 1.5 Pro
-            model = genai.GenerativeModel('gemini-3-pro-preview') 
+            model = genai.GenerativeModel('gemini-1.5-pro') 
             
             prompt = f"""
             You are an expert agricultural journalist writing for 'Sandesh News' in Gujarat.
@@ -75,7 +75,7 @@ if st.button("Generate Sandesh Article"):
             1. DO NOT mention any university, college, or institute name.
             2. Write in a journalistic, informative tone suitable for a daily newspaper's agriculture page.
             3. Use accurate agricultural and entomological terminology.
-            4. Format with a catchy headline, an introductory paragraph, and clear bullet points or subheadings for management practices.
+            4. Format with a catchy headline and continuous, flowing paragraphs. DO NOT use any bullet points, numbered lists, or dashes for lists. Write it as a narrative essay or traditional news article.
             5. The output must be entirely in Gujarati.
             
             Source Text:
@@ -102,7 +102,7 @@ if st.session_state.current_article:
         else:
             with st.spinner("Rewriting based on your suggestions..."):
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-3-pro-preview')
+                model = genai.GenerativeModel('gemini-1.5-pro')
                 
                 rewrite_prompt = f"""
                 You are an expert agricultural journalist. I have a draft article in Gujarati, but it needs some revisions.
@@ -113,7 +113,11 @@ if st.session_state.current_article:
                 Please rewrite the article by applying the following instructions:
                 {suggestion}
                 
-                Maintain the 'Sandesh News' journalistic tone, keep it entirely in Gujarati, and DO NOT mention any institute names.
+                Strict Rules for the Rewrite:
+                1. Maintain the 'Sandesh News' journalistic tone.
+                2. Keep it entirely in Gujarati.
+                3. DO NOT mention any institute names.
+                4. The entire text MUST remain in continuous paragraph format. Strictly NO bullet points or numbered lists.
                 """
                 
                 response = model.generate_content(rewrite_prompt)
