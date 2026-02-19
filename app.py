@@ -1,114 +1,132 @@
 import streamlit as st
-from openai import OpenAI
 import google.generativeai as genai
-from docx import Document
-import io
+import PyPDF2
+import docx
+from io import BytesIO
 
-st.set_page_config(page_title="SAU Extension Article Generator", layout="wide")
+# --- Configuration & Setup ---
+st.set_page_config(page_title="Sandesh News Article Generator", layout="wide")
 
-st.title("🕷️ Acarology Extension Article Generator")
-st.markdown("Fetch the latest mite management trends from Gujarat SAUs and generate Gujarati articles.")
+# Initialize session state variables to store the drafts
+if "current_article" not in st.session_state:
+    st.session_state.current_article = ""
 
-# --- Sidebar for API Keys ---
-st.sidebar.header("API Configuration")
-perplexity_key = st.sidebar.text_input("Perplexity API Key", type="password")
-gemini_key = st.sidebar.text_input("Gemini API Key", type="password")
+# --- Helper Functions ---
+def extract_text_from_pdf(uploaded_file):
+    pdf_reader = PyPDF2.PdfReader(uploaded_file)
+    text = ""
+    for page in pdf_reader.pages:
+        if page.extract_text():
+            text += page.extract_text()
+    return text
 
-# --- Helper Function: Generate Word Doc ---
-def create_word_docx(title, content, source_link):
-    """Generates an in-memory Word document."""
-    doc = Document()
-    doc.add_heading(title, level=1)
+def create_word_docx(text):
+    """Creates a Word document in memory for downloading."""
+    doc = docx.Document()
+    # Add a title
+    doc.add_heading('કૃષિ લેખ (Sandesh News Draft)', 0)
+    # Add the text content
+    doc.add_paragraph(text)
     
-    # Add the main article content
-    doc.add_paragraph(content)
-    
-    # Add references
-    doc.add_heading("સંદર્ભ (Source):", level=2)
-    doc.add_paragraph(source_link)
-    
-    # Save to BytesIO stream instead of a local file
-    file_stream = io.BytesIO()
-    doc.save(file_stream)
-    file_stream.seek(0)
-    return file_stream
+    bio = BytesIO()
+    doc.save(bio)
+    return bio.getvalue()
 
-# --- Main App Logic ---
-if st.button("🔍 Research & Write Article"):
-    if not perplexity_key or not gemini_key:
-        st.error("Please provide both Perplexity and Gemini API keys in the sidebar.")
+# --- Sidebar: API Key ---
+st.sidebar.title("API Configuration")
+api_key = st.sidebar.text_input("Gemini API Key", type="password")
+
+# --- Main UI ---
+st.title("📰 Sandesh News: Agri-Entomology Article Generator")
+st.markdown("Upload a document or paste text, generate a draft, refine it, and export to Word.")
+
+# --- Step 1: Input Section ---
+st.header("1. Provide Source Content")
+input_method = st.radio("Choose input method:", ["Copy & Paste Text", "Upload PDF"])
+
+source_text = ""
+
+if input_method == "Copy & Paste Text":
+    source_text = st.text_area("Paste your English or Gujarati text here:", height=200)
+elif input_method == "Upload PDF":
+    uploaded_file = st.file_uploader("Upload an English or Gujarati PDF", type=["pdf"])
+    if uploaded_file is not None:
+        source_text = extract_text_from_pdf(uploaded_file)
+        st.success("PDF text extracted successfully!")
+
+# --- Step 2: Generation Section ---
+st.header("2. Generate Initial Draft")
+if st.button("Generate Sandesh Article"):
+    if not api_key:
+        st.error("Please enter your Gemini API Key in the sidebar.")
+    elif not source_text.strip():
+        st.warning("Please provide some source text first.")
     else:
-        with st.status("Initializing the research pipeline...", expanded=True) as status:
+        with st.spinner("Drafting article for Sandesh News..."):
+            genai.configure(api_key=api_key)
+            # Using the standard API model name for Gemini 1.5 Pro
+            model = genai.GenerativeModel('gemini-1.5-pro') 
             
-            try:
-                # STEP 1: Research with Perplexity
-                status.update(label="Searching NAU, AAU, and Krushi Prabhat for the latest mite trends...")
-                
-                # Perplexity uses the OpenAI SDK format
-                perplexity_client = OpenAI(api_key=perplexity_key, base_url="https://api.perplexity.ai")
-                
-                search_prompt = """
-                Search for the latest agricultural trends, advisories, or research regarding 'mites' (કથીરી). 
-                You MUST focus your search strictly on sources from Navsari Agricultural University (NAU), 
-                Anand Agricultural University (AAU / Krushi Govidya), and Krushi Prabhat.
-                
-                Provide:
-                1. A specific topic title.
-                2. A detailed summary of the pest management advisory or research finding.
-                3. The direct URL/Link to the PDF or source web page.
-                """
-                
-                perplexity_response = perplexity_client.chat.completions.create(
-                    model="sonar", # Perplexity's search model
-                    messages=[{"role": "user", "content": search_prompt}]
-                )
-                
-                research_data = perplexity_response.choices[0].message.content
-                
-                # STEP 2: Write with Gemini
-                status.update(label="Drafting the extension article in Gujarati with Gemini...")
-                
-                genai.configure(api_key=gemini_key)
-                gemini_model = genai.GenerativeModel('gemini-2.5-pro')
-                
-                writing_prompt = f"""
-                You are an expert Agricultural Entomologist writing a practical extension article for farmers.
-                Based on the following research data gathered from Gujarat State Agricultural Universities, write a comprehensive article about mite management in fluent Gujarati.
-                
-                Rules:
-                1. Write ONLY the Gujarati article text. No robotic intro/outro (e.g., "Here is the article").
-                2. Write it entirely in continuous paragraph form, avoiding heavy bullet points so it reads like a magazine article.
-                3. Ensure agricultural terminology is perfectly localized for South Gujarat.
-                
-                Research Data to translate and expand upon:
-                {research_data}
-                """
-                
-                article_content = gemini_model.generate_content(writing_prompt).text
-                
-                status.update(label="Pipeline complete!", state="complete")
-                
-                # --- Display Results ---
-                st.subheader("Generated Gujarati Article")
-                st.write(article_content)
-                
-                st.subheader("Underlying Research & Sources (From Perplexity)")
-                st.info(research_data)
-                
-                # STEP 3: Export to Word
-                word_file = create_word_docx(
-                    title="કથીરી જીવાત વ્યવસ્થાપન", 
-                    content=article_content, 
-                    source_link="Perplexity Search Data"
-                )
-                
-                st.download_button(
-                    label="📄 Download Article as Word Document",
-                    data=word_file,
-                    file_name="Mite_Management_Article.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
+            prompt = f"""
+            You are an expert agricultural journalist writing for 'Sandesh News' in Gujarat.
+            Read the following source text and write an engaging, practical agricultural extension article in fluent Gujarati.
+            
+            Strict Rules:
+            1. DO NOT mention any university, college, or institute name.
+            2. Write in a journalistic, informative tone suitable for a daily newspaper's agriculture page.
+            3. Use accurate agricultural and entomological terminology.
+            4. Format with a catchy headline, an introductory paragraph, and clear bullet points or subheadings for management practices.
+            5. The output must be entirely in Gujarati.
+            
+            Source Text:
+            {source_text[:20000]}
+            """
+            
+            response = model.generate_content(prompt)
+            st.session_state.current_article = response.text
 
-            except Exception as e:
-                status.update(label="An error occurred.", state="error")
-                st.error(f"Error details: {e}")
+# Display the current draft if it exists
+if st.session_state.current_article:
+    st.markdown("### 📝 Current Draft")
+    st.info(st.session_state.current_article)
+
+    # --- Step 3: Refinement Section ---
+    st.header("3. Suggest Changes & Rewrite")
+    suggestion = st.text_area("What should be changed, added, or removed?", placeholder="e.g., Make the chemical control section shorter, or emphasize organic methods more.")
+    
+    if st.button("Rewrite Article"):
+        if not api_key:
+            st.error("Please enter your Gemini API Key.")
+        elif not suggestion.strip():
+            st.warning("Please enter a suggestion first.")
+        else:
+            with st.spinner("Rewriting based on your suggestions..."):
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel('gemini-1.5-pro')
+                
+                rewrite_prompt = f"""
+                You are an expert agricultural journalist. I have a draft article in Gujarati, but it needs some revisions.
+                
+                Here is the current draft:
+                {st.session_state.current_article}
+                
+                Please rewrite the article by applying the following instructions:
+                {suggestion}
+                
+                Maintain the 'Sandesh News' journalistic tone, keep it entirely in Gujarati, and DO NOT mention any institute names.
+                """
+                
+                response = model.generate_content(rewrite_prompt)
+                st.session_state.current_article = response.text
+                st.rerun() # Refresh the app to show the updated draft
+
+    # --- Step 4: Export Section ---
+    st.header("4. Export Options")
+    word_file = create_word_docx(st.session_state.current_article)
+    
+    st.download_button(
+        label="📄 Download as Word Document (.docx)",
+        data=word_file,
+        file_name="Sandesh_Agri_Article.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
