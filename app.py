@@ -65,7 +65,7 @@ if st.button("Generate Sandesh Article"):
         with st.spinner("Drafting article for Sandesh News..."):
             genai.configure(api_key=api_key)
             # Using the standard API model name for Gemini 1.5 Pro
-            model = genai.GenerativeModel('gemini-1.5-pro') 
+            model = genai.GenerativeModel('gemini-3.1-pro-preview-customtools') 
             
             prompt = f"""
             You are an expert agricultural journalist writing for 'Sandesh News' in Gujarat.
