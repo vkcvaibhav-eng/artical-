@@ -1,118 +1,114 @@
 import streamlit as st
+from openai import OpenAI
 import google.generativeai as genai
-import PyPDF2
-import datetime
+from docx import Document
+import io
 
-# --- Configuration & Setup ---
-st.set_page_config(page_title="Agri-Entomology Content Creator", layout="wide")
+st.set_page_config(page_title="SAU Extension Article Generator", layout="wide")
 
-# --- Helper Functions ---
-def get_current_gujarat_context():
-    """Returns the current month and timely pest context for South Gujarat."""
-    months = ["January", "February", "March", "April", "May", "June", 
-              "July", "August", "September", "October", "November", "December"]
-    current_month = months[datetime.datetime.now().month - 1]
-    
-    # Context specific to South Gujarat pest dynamics
-    pest_context = {
-        "February": "Mango hoppers on new flush/flowering, aphids and thrips on rabi pulses/brinjal, coconut mites.",
-        "March": "Mango fruit flies starting, jassids and whiteflies peaking on summer crops.",
-        "April": "Fruit borers, heavy sucking pest pressure on summer vegetables."
-        # You can expand this dictionary for all 12 months
-    }
-    
-    current_pests = pest_context.get(current_month, "Seasonal insect pests of major crops.")
-    return current_month, current_pests
+st.title("🕷️ Acarology Extension Article Generator")
+st.markdown("Fetch the latest mite management trends from Gujarat SAUs and generate Gujarati articles.")
 
-def extract_text_from_pdf(uploaded_file):
-    pdf_reader = PyPDF2.PdfReader(uploaded_file)
-    text = ""
-    for page in pdf_reader.pages:
-        text += page.extract_text()
-    return text
-
-# --- Sidebar: API Keys ---
-st.sidebar.title("API Configuration")
-st.sidebar.markdown("Enter your available API keys below:")
+# --- Sidebar for API Keys ---
+st.sidebar.header("API Configuration")
+perplexity_key = st.sidebar.text_input("Perplexity API Key", type="password")
 gemini_key = st.sidebar.text_input("Gemini API Key", type="password")
-openai_key = st.sidebar.text_input("ChatGPT API Key", type="password")
-claude_key = st.sidebar.text_input("Claude API Key", type="password")
-deepseek_key = st.sidebar.text_input("DeepSeek API Key", type="password")
 
-selected_model = st.sidebar.selectbox("Choose Model", ["Gemini", "ChatGPT (Coming Soon)"])
-
-# --- Main App ---
-st.title("🌱 Agri-Entomology Gujarati Content Creator")
-st.markdown("Generate human-like Gujarati extension articles or translate English research PDFs.")
-
-tab1, tab2 = st.tabs(["✍️ Write Seasonal Article", "📄 Translate English PDF"])
-
-with tab1:
-    st.header("Generate Topic-Based Article")
-    current_month, local_pests = get_current_gujarat_context()
+# --- Helper Function: Generate Word Doc ---
+def create_word_docx(title, content, source_link):
+    """Generates an in-memory Word document."""
+    doc = Document()
+    doc.add_heading(title, level=1)
     
-    st.info(f"**Current Month:** {current_month}\n\n**Active Pests:** {local_pests}")
+    # Add the main article content
+    doc.add_paragraph(content)
     
-    topic = st.text_input("Specific Topic (Optional):", placeholder="e.g., Management of Coconut Mites (એરીફાઈડ કથીરી)")
+    # Add references
+    doc.add_heading("સંદર્ભ (Source):", level=2)
+    doc.add_paragraph(source_link)
     
-    if st.button("Generate Gujarati Article"):
-        if not gemini_key and selected_model == "Gemini":
-            st.error("Please enter your Gemini API Key in the sidebar.")
-        else:
-            with st.spinner("Drafting article like a human expert..."):
-                genai.configure(api_key=gemini_key)
-                model = genai.GenerativeModel('gemini-2.5-pro')
+    # Save to BytesIO stream instead of a local file
+    file_stream = io.BytesIO()
+    doc.save(file_stream)
+    file_stream.seek(0)
+    return file_stream
+
+# --- Main App Logic ---
+if st.button("🔍 Research & Write Article"):
+    if not perplexity_key or not gemini_key:
+        st.error("Please provide both Perplexity and Gemini API keys in the sidebar.")
+    else:
+        with st.status("Initializing the research pipeline...", expanded=True) as status:
+            
+            try:
+                # STEP 1: Research with Perplexity
+                status.update(label="Searching NAU, AAU, and Krushi Prabhat for the latest mite trends...")
                 
-                # The System Prompt: This prevents the "AI tone"
-                prompt = f"""
-                You are an expert Agricultural Entomologist working in South Gujarat. 
-                Write an extension article in fluent, natural Gujarati for local farmers.
+                # Perplexity uses the OpenAI SDK format
+                perplexity_client = OpenAI(api_key=perplexity_key, base_url="https://api.perplexity.ai")
                 
-                Context:
-                - Month: {current_month}
-                - Common pests right now: {local_pests}
-                - Specific topic to focus on: {topic}
+                search_prompt = """
+                Search for the latest agricultural trends, advisories, or research regarding 'mites' (કથીરી). 
+                You MUST focus your search strictly on sources from Navsari Agricultural University (NAU), 
+                Anand Agricultural University (AAU / Krushi Govidya), and Krushi Prabhat.
                 
-                Strict Rules:
-                1. DO NOT use generic AI structures like "Here is an article", "In conclusion", or "It is important to note".
-                2. Write in a conversational, authoritative, and practical tone, exactly like a university extension bulletin or farm magazine.
-                3. Use accurate Gujarati agricultural and entomological terminology (e.g., 'જીવાત' for pests, 'સંકલિત જીવાત નિયંત્રણ' for IPM).
-                4. Focus heavily on practical management (cultural, biological, and chemical) suited for the region.
+                Provide:
+                1. A specific topic title.
+                2. A detailed summary of the pest management advisory or research finding.
+                3. The direct URL/Link to the PDF or source web page.
                 """
                 
-                response = model.generate_content(prompt)
-                st.subheader("Generated Article:")
-                st.write(response.text)
+                perplexity_response = perplexity_client.chat.completions.create(
+                    model="sonar", # Perplexity's search model
+                    messages=[{"role": "user", "content": search_prompt}]
+                )
+                
+                research_data = perplexity_response.choices[0].message.content
+                
+                # STEP 2: Write with Gemini
+                status.update(label="Drafting the extension article in Gujarati with Gemini...")
+                
+                genai.configure(api_key=gemini_key)
+                gemini_model = genai.GenerativeModel('gemini-2.5-pro')
+                
+                writing_prompt = f"""
+                You are an expert Agricultural Entomologist writing a practical extension article for farmers.
+                Based on the following research data gathered from Gujarat State Agricultural Universities, write a comprehensive article about mite management in fluent Gujarati.
+                
+                Rules:
+                1. Write ONLY the Gujarati article text. No robotic intro/outro (e.g., "Here is the article").
+                2. Write it entirely in continuous paragraph form, avoiding heavy bullet points so it reads like a magazine article.
+                3. Ensure agricultural terminology is perfectly localized for South Gujarat.
+                
+                Research Data to translate and expand upon:
+                {research_data}
+                """
+                
+                article_content = gemini_model.generate_content(writing_prompt).text
+                
+                status.update(label="Pipeline complete!", state="complete")
+                
+                # --- Display Results ---
+                st.subheader("Generated Gujarati Article")
+                st.write(article_content)
+                
+                st.subheader("Underlying Research & Sources (From Perplexity)")
+                st.info(research_data)
+                
+                # STEP 3: Export to Word
+                word_file = create_word_docx(
+                    title="કથીરી જીવાત વ્યવસ્થાપન", 
+                    content=article_content, 
+                    source_link="Perplexity Search Data"
+                )
+                
+                st.download_button(
+                    label="📄 Download Article as Word Document",
+                    data=word_file,
+                    file_name="Mite_Management_Article.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
 
-with tab2:
-    st.header("Translate English PDF to Gujarati")
-    uploaded_file = st.file_uploader("Upload English PDF", type="pdf")
-    
-    if st.button("Translate to Gujarati"):
-        if uploaded_file is not None:
-            if not gemini_key:
-                st.error("Please enter your Gemini API Key.")
-            else:
-                with st.spinner("Extracting and Translating..."):
-                    english_text = extract_text_from_pdf(uploaded_file)
-                    
-                    genai.configure(api_key=gemini_key)
-                    model = genai.GenerativeModel('gemini-2.5-pro')
-                    
-                    translation_prompt = f"""
-                    You are an expert Agricultural Entomologist. Translate the following English agricultural text into fluent, natural Gujarati.
-                    
-                    Strict Rules:
-                    1. The output must NOT sound like a machine translation. 
-                    2. Use correct local terminology for South Gujarat farming.
-                    3. Preserve the academic/technical accuracy but make it readable for the local agricultural community.
-                    
-                    English Text:
-                    {english_text[:15000]} 
-                    """
-                    
-                    response = model.generate_content(translation_prompt)
-                    st.subheader("Gujarati Translation:")
-                    st.write(response.text)
-        else:
-            st.warning("Please upload a PDF first.")
+            except Exception as e:
+                status.update(label="An error occurred.", state="error")
+                st.error(f"Error details: {e}")
