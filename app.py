@@ -70,7 +70,7 @@ if st.button("Identify Crop-Pest Combinations"):
     else:
         with st.spinner("Analyzing document for crops and insect pests..."):
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-1.5-pro')
+            model = genai.GenerativeModel('gemini-3-flash-preview')
             
             extraction_prompt = f"""
             Analyze the following agricultural text and identify all combinations of crops and insect pests (or diseases) mentioned.
@@ -139,7 +139,7 @@ if st.session_state.current_article:
             else:
                 with st.spinner("Rewriting based on your suggestions..."):
                     genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel('gemini-1.5-pro')
+                    model = genai.GenerativeModel('gemini-3-pro-preview')
                     
                     rewrite_prompt = f"""
                     You are an expert agricultural journalist. I have a draft article in Gujarati, but it needs revisions.
