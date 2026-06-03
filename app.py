@@ -15,7 +15,7 @@ except ImportError:
 
 
 APP_TITLE = "Agriculture Acarology Gujarati Article Writer"
-DEFAULT_GEMINI_MODEL = "gemini-1.5-pro"
+DEFAULT_GEMINI_MODEL = "gemini-3.1-pro-preview"
 DEFAULT_PERPLEXITY_MODEL = "sonar-deep-research"
 
 
