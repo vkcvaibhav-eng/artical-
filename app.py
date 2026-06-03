@@ -16,7 +16,8 @@ except ImportError:
 
 APP_TITLE = "Agriculture Acarology Gujarati Article Writer"
 DEFAULT_GEMINI_MODEL = "gemini-1.5-pro"
-DEFAULT_PERPLEXITY_MODEL = "sonar-deep-research"
+DEFAULT_TOPIC_MODEL = "sonar-pro"
+DEFAULT_RESEARCH_MODEL = "sonar-deep-research"
 
 
 st.set_page_config(page_title=APP_TITLE, layout="wide")
@@ -79,7 +80,7 @@ def call_gemini(api_key, model_name, prompt, temperature=0.45):
     return response.text.strip()
 
 
-def call_perplexity(api_key, model_name, prompt):
+def call_perplexity(api_key, model_name, prompt, timeout_seconds=240):
     if not api_key:
         raise RuntimeError("Perplexity API key is missing.")
 
@@ -102,7 +103,7 @@ def call_perplexity(api_key, model_name, prompt):
                 {"role": "user", "content": prompt},
             ],
         },
-        timeout=90,
+        timeout=timeout_seconds,
     )
     response.raise_for_status()
     data = response.json()
@@ -276,7 +277,9 @@ with st.sidebar:
 
     st.header("Models")
     gemini_model = st.text_input("Gemini model", DEFAULT_GEMINI_MODEL)
-    perplexity_model = st.text_input("Perplexity model", DEFAULT_PERPLEXITY_MODEL)
+    topic_model = st.text_input("Perplexity topic search model", DEFAULT_TOPIC_MODEL)
+    research_model = st.text_input("Perplexity deep research model", DEFAULT_RESEARCH_MODEL)
+    perplexity_timeout = st.slider("Perplexity timeout seconds", 90, 360, 240, 30)
 
     st.header("Article Settings")
     region = st.text_input("Target region", "South Gujarat, Bharuch, Ankleshwar, and Vadodara belt, Gujarat, India")
@@ -302,7 +305,12 @@ with tab_topic:
     if st.button("Search Acarology Topics With Perplexity", use_container_width=True):
         try:
             prompt = build_topic_prompt(today_india(), region, crop_focus)
-            st.session_state.topic_ideas = call_perplexity(perplexity_api_key, perplexity_model, prompt)
+            st.session_state.topic_ideas = call_perplexity(
+                perplexity_api_key,
+                topic_model,
+                prompt,
+                timeout_seconds=perplexity_timeout,
+            )
             st.session_state.topic_options = parse_topic_options(st.session_state.topic_ideas)
         except Exception as exc:
             st.error(f"Perplexity topic search failed: {exc}")
@@ -343,7 +351,12 @@ with tab_research:
                     region,
                     st.session_state.source_text,
                 )
-                st.session_state.research_brief = call_perplexity(perplexity_api_key, perplexity_model, prompt)
+                st.session_state.research_brief = call_perplexity(
+                    perplexity_api_key,
+                    research_model,
+                    prompt,
+                    timeout_seconds=perplexity_timeout,
+                )
             except Exception as exc:
                 st.error(f"Perplexity research failed: {exc}")
 
