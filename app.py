@@ -15,7 +15,7 @@ except ImportError:
 
 
 APP_TITLE = "Agriculture Acarology Gujarati Article Writer"
-DEFAULT_GEMINI_MODEL = "gemini-3.1-pro-preview"
+DEFAULT_GEMINI_MODEL = "gemini-1.5-pro"
 DEFAULT_PERPLEXITY_MODEL = "sonar-deep-research"
 
 
@@ -127,7 +127,7 @@ Today is {date_text} in India.
 
 Search the web and find 6 timely article topics only related to agricultural acarology for farmers.
 
-Region: {region}
+Target region: {region}
 Current season crop focus: {crop_focus}
 
 Topic scope:
@@ -136,8 +136,10 @@ Topic scope:
 - Mite management, farmer advisory, avoidable crop losses
 - New technology, monitoring, biological control, IPM, weather-linked risk
 - Current season crops, pest pressure, and farmer decision timing
+- South Gujarat and nearby belt relevance, especially Bharuch, Ankleshwar, and Vadodara when useful
 
 Avoid topics that are only general insects, plant diseases, market prices, or policy unless mites/acarology are central.
+Prefer topics relevant to South Gujarat crops and farming conditions. If a topic is not clearly relevant to this region, do not include it.
 
 Return strict JSON only. No markdown. No commentary.
 Format:
@@ -161,13 +163,14 @@ Today is {date_text} in India.
 Deep research this selected agriculture acarology topic for a farmer-focused Gujarati newspaper article:
 {topic}
 
-Region: {region}
+Target region: {region}
 
 Extra source material from user:
 {source_text[:12000]}
 
 Prepare a research brief with:
 - Current relevance for farmers and current season crops
+- Specific relevance to South Gujarat, Bharuch, Ankleshwar, and Vadodara farming areas where applicable
 - Mite/acarology background in simple language
 - Crop damage symptoms and avoidable loss points
 - Practical farmer advisory and IPM guidance
@@ -276,8 +279,11 @@ with st.sidebar:
     perplexity_model = st.text_input("Perplexity model", DEFAULT_PERPLEXITY_MODEL)
 
     st.header("Article Settings")
-    region = st.text_input("Region", "Gujarat, India")
-    crop_focus = st.text_input("Current season crop focus", "cotton, chilli, vegetables, fruit crops, and other current season crops")
+    region = st.text_input("Target region", "South Gujarat, Bharuch, Ankleshwar, and Vadodara belt, Gujarat, India")
+    crop_focus = st.text_input(
+        "Current season crop focus",
+        "cotton, sugarcane, banana, chilli, brinjal, okra, vegetables, fruit crops, pulses, and other South Gujarat current season crops",
+    )
     word_count = st.slider("Approx word count", 450, 1300, 750, 50)
     style_rules = st.text_area(
         "Extra rules",
@@ -291,7 +297,7 @@ tab_topic, tab_research, tab_write, tab_sources, tab_export = st.tabs(
 
 with tab_topic:
     st.subheader("Step 1: Perplexity searches current acarology topics")
-    st.write("This step searches only agriculture acarology topics useful for farmers, current crops, pest advisory, new technology, and avoidable crop losses.")
+    st.write("This step searches only agriculture acarology topics useful for South Gujarat farmers, including Bharuch, Ankleshwar, and Vadodara crop areas.")
 
     if st.button("Search Acarology Topics With Perplexity", use_container_width=True):
         try:
